@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Local WiFi Chat — Lightweight, secure chat application for Cloud, Laptop & ESP32 Edge deployment.">
+    <title>Secure WiFi Chat — {{ config.ENV_LABEL }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+
+        <!-- ================= LOGIN SCREEN ================= -->
+        <div id="login-container" class="login-wrapper">
+            <div class="login-card glass-card">
+                <div class="login-header">
+                    <span class="logo-icon">💬</span>
+                    <h2>Secure WiFi Chat</h2>
+                    <p class="subtitle">Enter username and local access key to join the server.</p>
+                </div>
+                <form id="login-form">
+                    <div class="input-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" placeholder="Enter username (Max 15 chars)" required autocomplete="off" maxlength="15">
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Server Password</label>
+                        <input type="password" id="password" placeholder="Enter password (e.g. 1234!@#$)" required autocomplete="off">
+                    </div>
+                    <div id="login-error" class="alert alert-danger hidden"></div>
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <span class="btn-text">🔑 Log In</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- ================= MAIN CHAT INTERFACE ================= -->
+        <div id="chat-container" class="main-layout hidden">
+
+            <!-- ---- SIDEBAR: Performance Panel ---- -->
+            <aside id="perf-sidebar" class="perf-sidebar">
+                <div class="sidebar-header">
+                    <h2>📊 Performance</h2>
+                    <button id="btn-close-sidebar" class="btn-icon" title="Close">✕</button>
+                </div>
+
+                <!-- System Info -->
+                <section class="sidebar-section">
+                    <h3>🖥️ Server Info</h3>
+                    <div id="system-info" class="system-grid">
+                        <div class="sys-row"><span class="sys-label">Env</span><span class="sys-value" id="sys-env">—</span></div>
+                        <div class="sys-row"><span class="sys-label">Platform</span><span class="sys-value" id="sys-platform">—</span></div>
+                        <div class="sys-row"><span class="sys-label">Uptime</span><span class="sys-value" id="sys-uptime">—</span></div>
+                        <div class="sys-row"><span class="sys-label">Active Users</span><span class="sys-value" id="sys-users">—</span></div>
+                    </div>
+                </section>
+
+                <!-- Live Metrics -->
+                <section class="sidebar-section">
+                    <h3>⚡ Live Telemetry</h3>
+                    <div class="metric-cards">
+                        <div class="metric-card">
+                            <span class="metric-label">RTT Ping</span>
+                            <span class="metric-value" id="live-ping">—</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">RAM Usage</span>
+                            <span class="metric-value" id="live-ram">—</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">CPU Load</span>
+                            <span class="metric-value" id="live-cpu">—</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Sent Messages</span>
+                            <span class="metric-value" id="live-requests">0</span>
+                        </div>
+                        <div class="metric-card" style="grid-column: span 2;">
+                            <span class="metric-label">Avg Processing Latency</span>
+                            <span class="metric-value" id="live-avg-latency">—</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Inference History Chart -->
+                <section class="sidebar-section">
+                    <h3>📈 Latency History</h3>
+                    <div class="chart-container">
+                        <canvas id="latency-chart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Performance Log Table -->
+                <section class="sidebar-section">
+                    <h3>📋 Message Processing Log</h3>
+                    <div class="log-table-wrapper">
+                        <table class="log-table" id="perf-log-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Time</th>
+                                    <th>Text Size</th>
+                                    <th>Latency</th>
+                                    <th>CPU</th>
+                                    <th>RAM Δ</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="perf-log-body">
+                                <tr><td colspan="7" class="empty-row">No messages sent yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Load Test Section -->
+                <section class="sidebar-section">
+                    <h3>🔥 Stress Tester</h3>
+                    <p class="section-desc">Send concurrent mock messages to measure local edge or cloud throughput/limits.</p>
+                    <div class="load-test-controls">
+                        <label>
+                            Requests:
+                            <input type="number" id="load-count" value="10" min="1" max="100" class="input-small">
+                        </label>
+                        <label>
+                            Concurrency:
+                            <input type="number" id="load-concurrency" value="3" min="1" max="20" class="input-small">
+                        </label>
+                        <button id="btn-load-test" class="btn btn-danger btn-block" style="margin-top:0.5rem; justify-content:center;">Run Stress Test</button>
+                    </div>
+                    <div id="load-test-results" class="load-results hidden"></div>
+                </section>
+
+                <!-- Performance log description -->
+                <section class="sidebar-section">
+                    <h3>ℹ️ Connection Info</h3>
+                    <p class="section-desc">Polling intervals are automatically throttled when window is inactive. Average RTT reflects live WebSocket/HTTP round-trip latency to local network interface or cloud.</p>
+                </section>
+            </aside>
+
+            <!-- ---- MAIN COLUMN ---- -->
+            <main class="main-content-wrapper">
+
+                <!-- Top Bar -->
+                <header class="top-bar">
+                    <div class="top-bar-left">
+                        <!-- End Chat Button - Top Left on active chat page -->
+                        <button id="btn-end-chat" class="btn btn-danger hidden">⛔ End Chat</button>
+                        <div class="logo">
+                            <span class="logo-icon">💬</span>
+                            <h1>WiFi <span class="accent">Chat</span></h1>
+                        </div>
+                        <span class="env-badge" id="env-badge">{{ config.ENV_LABEL }}</span>
+                    </div>
+                    <div class="top-bar-right">
+                        <span class="user-badge" id="user-badge">User: —</span>
+                        <button id="btn-open-sidebar" class="btn btn-outline" title="Performance Dashboard">📊 Perf</button>
+                        <button id="btn-logout" class="btn btn-outline" title="Logout">🚪 Logout</button>
+                    </div>
+                </header>
+
+                <div class="app-workspace">
+                    <!-- Users List (Left Column) -->
+                    <section class="users-panel glass-card">
+                        <div class="panel-header">
+                            <h3>👥 Connected Users</h3>
+                        </div>
+                        <div class="users-list-wrapper">
+                            <div id="users-list" class="users-list">
+                                <p class="loading-text">Scanning network...</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Chat Window (Right Column) -->
+                    <section class="chat-panel glass-card">
+                        <!-- Idle State -->
+                        <div id="chat-idle" class="chat-state-content">
+                            <div class="idle-graphics">💬</div>
+                            <h3>Start a Secure Chat</h3>
+                            <p>Choose an available user from the list on the left to initiate a peer-to-peer secure session.</p>
+                        </div>
+
+                        <!-- Chatting State -->
+                        <div id="chat-active" class="chat-state-content hidden">
+                            <div class="chat-header">
+                                <div class="chat-partner-info">
+                                    <span class="status-dot"></span>
+                                    <h4 id="chat-partner-name">Username</h4>
+                                </div>
+                                <span class="secure-badge">🔒 Encrypted Endpoint</span>
+                            </div>
+
+                            <!-- Message History -->
+                            <div class="chat-history-wrapper" id="chat-history-wrapper">
+                                <div id="chat-history" class="chat-history"></div>
+                            </div>
+
+                            <!-- Input and Typing Area -->
+                            <div class="chat-input-area">
+                                <div id="typing-indicator" class="typing-indicator invisible">partner is typing...</div>
+                                <form id="chat-form" class="chat-form-row">
+                                    <input type="text" id="chat-input" placeholder="Type a secure message..." required autocomplete="off" maxlength="500">
+                                    <button type="submit" class="btn btn-primary" id="btn-send">
+                                        <span>Send 🚀</span>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Footer -->
+                <footer class="app-footer">
+                    <p>
+                        WiFi Secure Chat v{{ config.VERSION }} &middot;
+                        <span id="footer-env">{{ config.ENV_NAME }}</span> &middot;
+                        Optimized for ESP32 & Cloud Runtimes
+                    </p>
+                </footer>
+            </main>
+        </div>
+    </div>
+
+    <!-- Chart.js CDN (lightweight) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+
