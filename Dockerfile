@@ -23,5 +23,5 @@ COPY . .
 # Expose container port
 EXPOSE 8080
 
-# Production launch using Gunicorn
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-"]
+# Production launch using Gunicorn (workers 1 is required for in-memory session state)
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-"]
