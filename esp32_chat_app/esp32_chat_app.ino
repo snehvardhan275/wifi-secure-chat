@@ -177,12 +177,59 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                             <span class="metric-label">Sent Messages</span>
                             <span class="metric-value" id="live-requests">0</span>
                         </div>
+                        <div class="metric-card">
+                            <span class="metric-label">Energy Spent</span>
+                            <span class="metric-value" id="live-energy">—</span>
+                        </div>
+                        <div class="metric-card">
+                            <span class="metric-label">CPU Cycles</span>
+                            <span class="metric-value" id="live-cycles">—</span>
+                        </div>
                         <div class="metric-card" style="grid-column: span 2;">
                             <span class="metric-label">Avg Processing Latency</span>
                             <span class="metric-value" id="live-avg-latency">—</span>
                         </div>
                     </div>
                 </section>
+
+                <!-- Latency vs Energy Offloading Tradeoff Matrix -->
+                <section class="sidebar-section">
+                    <h3>⚖️ Offloading Tradeoff Matrix</h3>
+                    <p class="section-desc">Dynamic estimation of processing the active payload size across platforms:</p>
+                    <div class="log-table-wrapper" style="max-height: 250px;">
+                        <table class="log-table">
+                            <thead>
+                                <tr>
+                                    <th>Node</th>
+                                    <th>Latency</th>
+                                    <th>Est. Energy</th>
+                                    <th>Tradeoff Profile</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>💻 Laptop</td>
+                                    <td id="tradeoff-laptop-latency">—</td>
+                                    <td id="tradeoff-laptop-energy">—</td>
+                                    <td><span class="status-badge available" style="font-size:0.6rem;">High Power</span></td>
+                                </tr>
+                                <tr>
+                                    <td>☁️ Cloud</td>
+                                    <td id="tradeoff-cloud-latency">—</td>
+                                    <td id="tradeoff-cloud-energy">—</td>
+                                    <td><span class="status-badge busy" style="font-size:0.6rem;">WAN Latency</span></td>
+                                </tr>
+                                <tr>
+                                    <td>🔧 Edge (ESP32)</td>
+                                    <td id="tradeoff-edge-latency">—</td>
+                                    <td id="tradeoff-edge-energy">—</td>
+                                    <td><span class="status-badge available" style="font-size:0.6rem; color:#22c55e; border-color:#22c55e; background:rgba(34,197,94,0.15)">Eco-Friendly</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
                 <!-- Inference History Chart -->
                 <section class="sidebar-section">
                     <h3>📈 Latency History</h3>
@@ -201,13 +248,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                                     <th>Time</th>
                                     <th>Text Size</th>
                                     <th>Latency</th>
+                                    <th>Energy</th>
+                                    <th>Cycles</th>
                                     <th>CPU</th>
                                     <th>RAM Δ</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
                             <tbody id="perf-log-body">
-                                <tr><td colspan="7" class="empty-row">No messages sent yet</td></tr>
+                                <tr><td colspan="9" class="empty-row">No messages sent yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1032,17 +1081,13 @@ body.sidebar-open .main-content-wrapper { margin-right: var(--sidebar-width); }
     color: var(--text-primary);
     margin-bottom: 0.4rem;
 }
-
-@media (max-width: 860px) {
-    .app-workspace { grid-template-columns: 1fr; height: auto; }
-    .main-content-wrapper { height: auto; padding: 1rem; }
-    .users-panel { height: 250px; }
-    .chat-panel { height: 450px; }
-    body.sidebar-open .main-content-wrapper { margin-right: 0; }
-}
-)rawliteral";
-
 const char APP_JS[] PROGMEM = R"rawliteral(
+// ============================================================
+// WiFi Secure Chat — Front-End Application Logic
+// Handles polling, real-time events, typing detection, and UI.
+// ============================================================
+
+// --- Application State ---
 let sessionToken = localStorage.getItem("chat_session_token") || null;
 let username = localStorage.getItem("chat_username") || null;
 let userState = "idle"; // "idle" or "chatting"
@@ -1264,6 +1309,9 @@ function updateDashboard(data) {
     // Update global environment badge
     document.getElementById("env-badge").textContent = sys.env_label || "WiFi Server";
 
+    // Update estimated tradeoff comparison dynamically
+    updateTradeoffMatrix(10, null);
+
 
     // 2. Render Online Users List
     renderUsersList(data.users || []);
@@ -1461,6 +1509,22 @@ async function handleSendMessage(e) {
             liveAvgLatency.textContent = (totalLatency / requestCount).toFixed(3) + " s";
             if (p.cpu_after_pct) liveCpu.textContent = `${p.cpu_after_pct}%`;
             if (p.ram_after_mb) liveRam.textContent = `${p.ram_after_mb} MB`;
+
+            if (p.energy_j !== undefined) {
+                if (p.energy_j < 0.001) {
+                    document.getElementById("live-energy").textContent = (p.energy_j * 1000000).toFixed(1) + " μJ";
+                } else if (p.energy_j < 1.0) {
+                    document.getElementById("live-energy").textContent = (p.energy_j * 1000).toFixed(1) + " mJ";
+                } else {
+                    document.getElementById("live-energy").textContent = p.energy_j.toFixed(3) + " J";
+                }
+            }
+            if (p.cpu_cycles !== undefined) {
+                document.getElementById("live-cycles").textContent = p.cpu_cycles.toLocaleString();
+            }
+
+            // Update estimated tradeoff comparison dynamically based on active payload
+            updateTradeoffMatrix(text.length, p);
 
             // Draw to graph and prepend log row
             addChartPoint(p.latency_s);
@@ -1667,11 +1731,26 @@ function addLogRow(perf) {
     const statusClass = perf.status === "success" ? "status-ok" : "status-err";
     const latencyMs = (perf.latency_s * 1000.0).toFixed(2);
 
+    let energyStr = "N/A";
+    if (perf.energy_j !== undefined) {
+        const energyJ = perf.energy_j;
+        if (energyJ < 0.001) {
+            energyStr = (energyJ * 1000000).toFixed(1) + " μJ";
+        } else if (energyJ < 1.0) {
+            energyStr = (energyJ * 1000).toFixed(1) + " mJ";
+        } else {
+            energyStr = energyJ.toFixed(2) + " J";
+        }
+    }
+    const cyclesStr = perf.cpu_cycles !== undefined ? perf.cpu_cycles.toLocaleString() : "N/A";
+
     row.innerHTML = `
         <td>${requestCount}</td>
-        <td>time</td>
+        <td>${time}</td>
         <td>${perf.text_length || 0} chars</td>
         <td>${latencyMs} ms</td>
+        <td>${energyStr}</td>
+        <td>${cyclesStr}</td>
         <td>${perf.cpu_after_pct !== undefined ? perf.cpu_after_pct + "%" : "N/A"}</td>
         <td>${perf.ram_delta_mb !== undefined ? (perf.ram_delta_mb >= 0 ? "+" : "") + perf.ram_delta_mb + " MB" : "N/A"}</td>
         <td class="${statusClass}">${perf.status === "success" ? "✓" : "✗"}</td>
@@ -1713,11 +1792,13 @@ async function refreshPerformanceData() {
         const res = await fetch("/api/performance");
         if (res.ok) {
             const data = await res.json();
+            // Sync any historical logs if desired
         }
     } catch (e) { /* ignore */ }
 }
 
 // Auto-refresh when open
+// Check system metrics every 5 seconds
 setInterval(() => {
     if (perfSidebar && perfSidebar.classList.contains("open")) {
         loadSystemInfo();
@@ -1761,7 +1842,9 @@ async function runStressTest() {
                             const p = data.perf || { latency_s: 0.001 };
                             results.push({
                                 rttLatency: elapsed,
-                                serverLatency: p.latency_s
+                                serverLatency: p.latency_s,
+                                energy_j: p.energy_j,
+                                cpu_cycles: p.cpu_cycles
                             });
                             completed++;
                             requestCount++;
@@ -1771,7 +1854,9 @@ async function runStressTest() {
                         } else {
                             results.push({
                                 rttLatency: elapsed,
-                                serverLatency: 0.001
+                                serverLatency: 0.001,
+                                energy_j: 0.0,
+                                cpu_cycles: 0
                             });
                             errors++;
                         }
@@ -1806,6 +1891,24 @@ async function runStressTest() {
 
         const throughput = completed / totalTime;
 
+        // Energy analytics during stress test
+        const energyValues = results.filter(r => r.energy_j !== undefined).map(r => r.energy_j);
+        const avgEnergy = energyValues.length > 0 ? (energyValues.reduce((a, b) => a + b, 0) / energyValues.length) : 0;
+        
+        let avgEnergyStr = "N/A";
+        if (avgEnergy > 0) {
+            if (avgEnergy < 0.001) {
+                avgEnergyStr = (avgEnergy * 1000000).toFixed(1) + " μJ";
+            } else if (avgEnergy < 1.0) {
+                avgEnergyStr = (avgEnergy * 1000).toFixed(1) + " mJ";
+            } else {
+                avgEnergyStr = avgEnergy.toFixed(4) + " J";
+            }
+        }
+        
+        const cyclesValues = results.filter(r => r.cpu_cycles !== undefined).map(r => r.cpu_cycles);
+        const avgCycles = cyclesValues.length > 0 ? Math.round(cyclesValues.reduce((a, b) => a + b, 0) / cyclesValues.length) : 0;
+
         loadTestResults.innerHTML = `
             <div class="lr-title">📊 Stress Test Results</div>
             <div>Total Sent   : ${count} requests</div>
@@ -1815,6 +1918,8 @@ async function runStressTest() {
             <div>Throughput   : ${throughput.toFixed(1)} req/s</div>
             <div>──────────────────────</div>
             <div>Avg Processing: ${avgServer.toFixed(2)} ms</div>
+            <div>Avg Energy     : ${avgEnergyStr}</div>
+            <div>Avg CPU Cycles : ${avgCycles.toLocaleString()}</div>
             <div>Avg RTT Latency: ${avgRtt.toFixed(1)} ms</div>
             <div>Min RTT Latency: ${minRtt.toFixed(1)} ms</div>
             <div>Max RTT Latency: ${maxRtt.toFixed(1)} ms</div>
@@ -1836,11 +1941,102 @@ function truncate(str, len) {
     if (!str) return "";
     return str.length > len ? str.substring(0, len) + "..." : str;
 }
+
+
+// ============================================================
+// Latency vs Energy Offloading Tradeoff Engine
+// ============================================================
+function updateTradeoffMatrix(textLength, activePerf) {
+    const envLabel = document.getElementById("env-badge").textContent.toLowerCase();
+    let currentEnv = "laptop";
+    if (envLabel.includes("edge") || envLabel.includes("esp32")) {
+        currentEnv = "edge";
+    } else if (envLabel.includes("cloud") || envLabel.includes("render")) {
+        currentEnv = "cloud";
+    }
+
+    let laptopLat = 0, laptopEnergy = 0;
+    let cloudLat = 0, cloudEnergy = 0;
+    let edgeLat = 0, edgeEnergy = 0;
+
+    const len = textLength || 10;
+    
+    // Performance modeling constants
+    const estLaptopProcLat = 0.00002 + 0.0000005 * len; // Laptop core append time
+    const estCloudProcLat = 0.00005 + 0.000001 * len;   // Cloud core append time
+    const estEdgeProcLat = 0.0001 + 0.00001 * len;       // ESP32 core append time
+
+    // Network delay values
+    const estLaptopRtt = 0.001; 
+    const estCloudRtt = 0.150; 
+    const estEdgeRtt = 0.015; 
+
+    // Power draw values (Watts)
+    const laptopPower = 15.0; 
+    const cloudPower = 8.0;   
+    const edgePower = 0.66;   
+
+    // Network transmission radio power (Watts)
+    const wifiActiveRadioPower = 1.0;
+    const wanActiveRadioPower = 1.5;
+
+    // Laptop Calculations
+    if (currentEnv === "laptop" && activePerf) {
+        laptopLat = activePerf.latency_s * 1000;
+        laptopEnergy = activePerf.energy_j;
+    } else {
+        laptopLat = estLaptopProcLat * 1000;
+        laptopEnergy = laptopPower * estLaptopProcLat;
+    }
+
+    // Cloud Calculations
+    if (currentEnv === "cloud" && activePerf) {
+        cloudLat = activePerf.latency_s * 1000;
+        cloudEnergy = activePerf.energy_j;
+    } else {
+        cloudLat = estCloudProcLat * 1000;
+        cloudEnergy = (cloudPower * estCloudProcLat) + (wanActiveRadioPower * estCloudRtt);
+    }
+    const cloudDisplayLat = (currentEnv === "cloud" && activePerf) ? (activePerf.latency_s * 1000 + estCloudRtt * 1000) : (cloudLat + estCloudRtt * 1000);
+
+    // Edge Calculations
+    if (currentEnv === "edge" && activePerf) {
+        edgeLat = activePerf.latency_s * 1000;
+        edgeEnergy = activePerf.energy_j;
+    } else {
+        edgeLat = estEdgeProcLat * 1000;
+        edgeEnergy = (edgePower * estEdgeProcLat) + (wifiActiveRadioPower * estEdgeRtt);
+    }
+    const edgeDisplayLat = (currentEnv === "edge" && activePerf) ? (activePerf.latency_s * 1000 + estEdgeRtt * 1000) : (edgeLat + estEdgeRtt * 1000);
+
+    // Update UI elements in sidebar tradeoff table
+    formatTradeoffCell("tradeoff-laptop-latency", laptopLat, "ms");
+    formatTradeoffCell("tradeoff-laptop-energy", laptopEnergy, "J");
+
+    formatTradeoffCell("tradeoff-cloud-latency", cloudDisplayLat, "ms");
+    formatTradeoffCell("tradeoff-cloud-energy", cloudEnergy, "J");
+
+    formatTradeoffCell("tradeoff-edge-latency", edgeDisplayLat, "ms");
+    formatTradeoffCell("tradeoff-edge-energy", edgeEnergy, "J");
+}
+
+function formatTradeoffCell(elementId, val, unit) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    if (unit === "ms") {
+        el.textContent = val.toFixed(2) + " ms";
+    } else if (unit === "J") {
+        if (val < 0.001) {
+            el.textContent = (val * 1000000).toFixed(1) + " μJ";
+        } else if (val < 1.0) {
+            el.textContent = (val * 1000).toFixed(1) + " mJ";
+        } else {
+            el.textContent = val.toFixed(4) + " J";
+        }
+    }
+}
 )rawliteral";
 
-// ---------------------------------------------------------------------------
-
-// Serve files
 void handleRoot() {
   server.send_P(200, "text/html", INDEX_HTML);
 }
@@ -2286,6 +2482,10 @@ void handleApiSend() {
     
     float latencyMs = (float)(endMicros - startMicros) / 1000.0;
     
+    uint32_t cpuFreqMhz = ESP.getCpuFreqMHz();
+    unsigned long cpuCycles = (unsigned long)(cpuFreqMhz * 1000.0 * latencyMs);
+    float energyJ = 0.66 * (latencyMs / 1000.0);
+
     uint32_t totalHeap = ESP.getHeapSize();
     uint32_t usedHeap = totalHeap - ramAfter;
     float ramUsedMb = (float)usedHeap / (1024.0 * 1024.0);
@@ -2302,6 +2502,8 @@ void handleApiSend() {
     perfObj["cpu_after_pct"] = 100;
     perfObj["ram_after_mb"] = ramUsedMb;
     perfObj["ram_delta_mb"] = ramDeltaMb;
+    perfObj["cpu_cycles"] = cpuCycles;
+    perfObj["energy_j"] = energyJ;
     perfObj["status"] = "success";
     
     String response;
@@ -2437,6 +2639,8 @@ void handleApiPerformance() {
     logObj["cpu_after_pct"] = 100;
     logObj["ram_after_mb"] = log.ramUsageMb;
     logObj["ram_delta_mb"] = log.ramDeltaMb;
+    logObj["cpu_cycles"] = (unsigned long)(ESP.getCpuFreqMHz() * 1000.0 * log.latencyMs);
+    logObj["energy_j"] = 0.66 * (log.latencyMs / 1000.0);
     logObj["status"] = log.status;
     
     unsigned long elapsedSec = log.timeMs / 1000;

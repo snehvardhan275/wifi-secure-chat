@@ -383,6 +383,22 @@ def api_send():
         ram_delta_mb = 0
         ram_after_mb = 0
 
+    # Calculate CPU clock frequency and CPU cycles spent in processing window
+    try:
+        cpu_freq = psutil.cpu_freq()
+        freq_mhz = cpu_freq.current if cpu_freq else 2500.0
+    except Exception:
+        freq_mhz = 2500.0
+    cpu_cycles = int(freq_mhz * 1000000 * latency_s)
+
+    # Dynamic Energy calculations (in Joules)
+    # Laptop: baseline 5W, peak 35W. Cloud: baseline 2W, peak 20W.
+    is_cloud = (config.ENV_NAME == "CLOUD")
+    p_idle = 2.0 if is_cloud else 5.0
+    p_peak = 20.0 if is_cloud else 35.0
+    power_w = p_idle + (p_peak - p_idle) * (cpu_after / 100.0)
+    energy_j = power_w * latency_s
+
     perf = {
         "type": "processing",
         "latency_s": round(latency_s, 6),
@@ -390,6 +406,8 @@ def api_send():
         "cpu_after_pct": cpu_after,
         "ram_after_mb": ram_after_mb,
         "ram_delta_mb": ram_delta_mb,
+        "cpu_cycles": cpu_cycles,
+        "energy_j": round(energy_j, 8),
         "status": status,
     }
     if error_msg:
