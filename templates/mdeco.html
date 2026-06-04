@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Multi-Criteria Deadline-Constrained Edge-Cloud Offloading (MDECO) Dashboard.">
+    <title>MDECO Dynamic Offloading Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* MDECO Specific Layout Overrides */
+        .mdeco-layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 1.5rem;
+            width: 100%;
+            min-height: calc(100vh - 140px);
+        }
+        .config-group {
+            margin-bottom: 0.8rem;
+        }
+        .config-group label {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-indicator {
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 0.1rem 0.3rem;
+            border-radius: 4px;
+        }
+        .status-indicator.connected {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+        }
+        .status-indicator.disconnected {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+        .config-group input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+        }
+        .config-group input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.75rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            margin-bottom: 0.4rem;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+        .radio-option:hover {
+            background: var(--bg-glass-hover);
+        }
+        .radio-option input[type="radio"] {
+            accent-color: var(--accent-primary);
+            cursor: pointer;
+        }
+        .radio-option.active {
+            border-color: var(--accent-primary);
+            background: rgba(99, 102, 241, 0.08);
+        }
+        .telemetry-row-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-sm);
+            padding: 0.75rem;
+            margin-bottom: 0.6rem;
+        }
+        .telemetry-row-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.82rem;
+            font-weight: 700;
+            border-bottom: 1px solid var(--border-glass);
+            padding-bottom: 0.3rem;
+            margin-bottom: 0.4rem;
+        }
+        .telemetry-row-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            font-size: 0.72rem;
+        }
+        .telemetry-stat {
+            display: flex;
+            flex-direction: column;
+        }
+        .telemetry-stat-label {
+            color: var(--text-muted);
+        }
+        .telemetry-stat-value {
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .decision-badge {
+            font-size: 1.1rem;
+            font-weight: 800;
+            font-family: var(--font-mono);
+            color: var(--accent-secondary);
+        }
+        .progress-container {
+            width: 100%;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-glass);
+            border-radius: 100px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+            position: relative;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--accent-gradient);
+            width: 0%;
+            transition: width 0.1s ease;
+        }
+        .decision-metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .decision-metric-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-sm);
+            padding: 0.75rem;
+            text-align: center;
+        }
+        .decision-metric-card.sat-yes {
+            border-color: rgba(34, 197, 94, 0.4);
+            background: rgba(34, 197, 94, 0.04);
+        }
+        .decision-metric-card.sat-no {
+            border-color: rgba(239, 68, 68, 0.4);
+            background: rgba(239, 68, 68, 0.04);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="main-layout" style="flex-direction: column; padding: 1.5rem 2rem; max-width: 1300px; margin: 0 auto; width: 100%;">
+            <!-- Header -->
+            <header class="top-bar" style="margin-bottom: 1.5rem;">
+                <div class="top-bar-left">
+                    <div class="logo">
+                        <span class="logo-icon">⚖️</span>
+                        <h1>MDECO <span class="accent">Offloader</span></h1>
+                    </div>
+                    <span class="env-badge">Multi-Criteria Edge-Cloud Decision Engine</span>
+                </div>
+                <div class="top-bar-right">
+                    <a href="/" class="btn btn-outline" style="text-decoration: none;">💬 Secure Chat</a>
+                </div>
+            </header>
+
+            <!-- Dashboard Grid Workspace -->
+            <div class="mdeco-layout">
+                <!-- Left Sidebar: Configuration & Constraints -->
+                <aside class="glass-card" style="padding: 1.25rem;">
+                    <h3 style="font-size: 0.95rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.4rem; color: var(--text-secondary);">⚙️ Endpoints Config</h3>
+                    
+                    <div class="config-group">
+                        <label>Device Node (Local) <span id="status-device" class="status-indicator disconnected">offline</span></label>
+                        <input type="text" id="url-device" value="http://localhost:5002">
+                    </div>
+                    
+                    <div class="config-group">
+                        <label>Edge Node (LAN) <span id="status-edge" class="status-indicator disconnected">offline</span></label>
+                        <input type="text" id="url-edge" placeholder="e.g. http://192.168.1.15:5002">
+                    </div>
+                    
+                    <div class="config-group">
+                        <label>Cloud Node (WAN) <span id="status-cloud" class="status-indicator disconnected">offline</span></label>
+                        <input type="text" id="url-cloud" value="https://wifi-secure-chat.onrender.com">
+                    </div>
+
+                    <h3 style="font-size: 0.95rem; margin-top: 1.25rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.4rem; color: var(--text-secondary);">🎯 Constraints & Workload</h3>
+                    
+                    <div class="config-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                        <div>
+                            <label>Total Tests</label>
+                            <input type="number" id="tests-count" value="100" min="10" max="10000">
+                        </div>
+                        <div>
+                            <label>Deadline (sec)</label>
+                            <input type="number" id="tests-deadline" value="20" min="1" max="300">
+                        </div>
+                    </div>
+
+                    <div class="config-group" style="margin-top: 0.8rem;">
+                        <label style="margin-bottom: 0.4rem;">Optimization Criteria</label>
+                        <div class="radio-option active" id="opt-latency">
+                            <input type="radio" name="opt-mode" value="LATENCY" checked>
+                            <span>Lowest Latency</span>
+                        </div>
+                        <div class="radio-option" id="opt-energy">
+                            <input type="radio" name="opt-mode" value="ENERGY">
+                            <span>Lowest Energy</span>
+                        </div>
+                        <div class="radio-option" id="opt-balanced">
+                            <input type="radio" name="opt-mode" value="BALANCED">
+                            <span>Balanced (Cost-Based)</span>
+                        </div>
+                        <div class="radio-option" id="opt-mdeco">
+                            <input type="radio" name="opt-mode" value="DEADLINE">
+                            <span>Deadline Constrained (MDECO)</span>
+                        </div>
+                        <div class="radio-option" id="opt-low-energy">
+                            <input type="radio" name="opt-mode" value="LOW_ENERGY">
+                            <span>Less Energy Consumption</span>
+                        </div>
+                    </div>
+
+                    <h3 style="font-size: 0.95rem; margin-top: 1.25rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.4rem; color: var(--text-secondary);">🧠 Scheduler Reasoning</h3>
+                    <div id="scheduler-reasoning-log" style="font-size: 0.72rem; font-family: var(--font-mono); color: var(--text-secondary); background: rgba(0,0,0,0.35); border: 1px solid var(--border-glass); border-radius: var(--radius-sm); padding: 0.5rem; height: 110px; overflow-y: auto; line-height: 1.4; word-break: break-word;">
+                        System idle. Waiting to execute workload offloading test.
+                    </div>
+
+                    <button id="btn-run-offload" class="btn btn-primary btn-block" style="margin-top: 1.25rem; justify-content: center; height: 40px; font-size: 0.9rem;">🚀 Run Offload Execution</button>
+                    <button id="btn-cancel-offload" class="btn btn-danger btn-block hidden" style="margin-top: 1.25rem; justify-content: center; height: 40px; font-size: 0.9rem;">🛑 Cancel Execution</button>
+                </aside>
+
+                <!-- Right Content Area -->
+                <main style="display: flex; flex-direction: column; gap: 1.5rem; min-height: 0;">
+                    
+                    <!-- Real-Time Metrics Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                        <!-- Local Device telemetry -->
+                        <div class="telemetry-row-card">
+                            <div class="telemetry-row-header" style="color: var(--accent-primary);">💻 Local Laptop</div>
+                            <div class="telemetry-row-stats">
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">RTT</span><span id="stat-dev-ping" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">CPU</span><span id="stat-dev-cpu" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">RAM</span><span id="stat-dev-ram" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">Power</span><span id="stat-dev-power" class="telemetry-stat-value">—</span></div>
+                            </div>
+                        </div>
+
+                        <!-- Edge Server telemetry -->
+                        <div class="telemetry-row-card">
+                            <div class="telemetry-row-header" style="color: var(--success);">🔧 Edge Laptop</div>
+                            <div class="telemetry-row-stats">
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">RTT</span><span id="stat-edge-ping" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">CPU</span><span id="stat-edge-cpu" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">RAM</span><span id="stat-edge-ram" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">Power</span><span id="stat-edge-power" class="telemetry-stat-value">—</span></div>
+                            </div>
+                        </div>
+
+                        <!-- Cloud Server telemetry -->
+                        <div class="telemetry-row-card">
+                            <div class="telemetry-row-header" style="color: var(--warning);">☁️ Cloud Server</div>
+                            <div class="telemetry-row-stats">
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">RTT</span><span id="stat-cloud-ping" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">CPU</span><span id="stat-cloud-cpu" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">RAM</span><span id="stat-cloud-ram" class="telemetry-stat-value">—</span></div>
+                                <div class="telemetry-stat"><span class="telemetry-stat-label">Power</span><span id="stat-cloud-power" class="telemetry-stat-value">—</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Offloading Allocation Dashboard Decisions -->
+                    <section class="glass-card">
+                        <h3 style="font-size: 0.95rem; margin-bottom: 0.8rem; border-bottom: 1px solid var(--border-glass); padding-bottom: 0.4rem; color: var(--text-secondary);">📊 Offloading Scheduler Decisions</h3>
+                        
+                        <div class="decision-metrics-grid">
+                            <div class="decision-metric-card">
+                                <div class="metric-label">Estimated Time</div>
+                                <div class="decision-badge" id="dec-est-time">—</div>
+                            </div>
+                            <div class="decision-metric-card" id="dec-sat-card">
+                                <div class="metric-label">Constraint Status</div>
+                                <div class="decision-badge" id="dec-status">—</div>
+                            </div>
+                            <div class="decision-metric-card">
+                                <div class="metric-label">Total Progress</div>
+                                <div class="decision-badge" id="dec-progress">0%</div>
+                                <div class="progress-container">
+                                    <div id="progress-bar-fill" class="progress-bar-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Workload allocation cards with LIVE progress -->
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                            <div class="telemetry-row-card" style="text-align: center;">
+                                <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Laptop Allocation</div>
+                                <div style="font-size: 1.3rem; font-weight: 800; color: var(--accent-primary);" id="alloc-device">0 req (0%)</div>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.35rem; font-family: var(--font-mono);" id="progress-device">Completed: 0 / 0</div>
+                            </div>
+                            <div class="telemetry-row-card" style="text-align: center;">
+                                <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Edge Allocation</div>
+                                <div style="font-size: 1.3rem; font-weight: 800; color: var(--success);" id="alloc-edge">0 req (0%)</div>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.35rem; font-family: var(--font-mono);" id="progress-edge">Completed: 0 / 0</div>
+                            </div>
+                            <div class="telemetry-row-card" style="text-align: center;">
+                                <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Cloud Allocation</div>
+                                <div style="font-size: 1.3rem; font-weight: 800; color: var(--warning);" id="alloc-cloud">0 req (0%)</div>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.35rem; font-family: var(--font-mono);" id="progress-cloud">Completed: 0 / 0</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Real-Time Latency vs Energy Analysis Section -->
+                    <section class="glass-card">
+                        <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-secondary);">⚖️ Live Run Node Latency & Energy Breakdown</h3>
+                        <div class="log-table-wrapper">
+                            <table class="log-table">
+                                <thead>
+                                    <tr>
+                                        <th>Node</th>
+                                        <th>Run Progress</th>
+                                        <th>Avg Latency (RTT)</th>
+                                        <th>Cumulative Energy Spent</th>
+                                        <th>Efficiency Profile</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="color: var(--accent-primary); font-weight: bold; text-align: left;">Laptop (Device)</td>
+                                        <td id="live-run-completed-device" style="font-family: var(--font-mono);">0 / 0</td>
+                                        <td id="live-run-rtt-device" style="font-family: var(--font-mono);">0.0 ms</td>
+                                        <td id="live-run-energy-device" style="font-family: var(--font-mono);">0.00 mJ</td>
+                                        <td><span class="status-badge available" style="font-size:0.6rem;">High Power Node</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: var(--success); font-weight: bold; text-align: left;">Laptop Server (Edge)</td>
+                                        <td id="live-run-completed-edge" style="font-family: var(--font-mono);">0 / 0</td>
+                                        <td id="live-run-rtt-edge" style="font-family: var(--font-mono);">0.0 ms</td>
+                                        <td id="live-run-energy-edge" style="font-family: var(--font-mono);">0.00 mJ</td>
+                                        <td><span class="status-badge available" style="font-size:0.6rem; color:#6366f1; border-color:#6366f1; background:rgba(99,102,241,0.1)">Medium Tradeoff</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: var(--warning); font-weight: bold; text-align: left;">Render Server (Cloud)</td>
+                                        <td id="live-run-completed-cloud" style="font-family: var(--font-mono);">0 / 0</td>
+                                        <td id="live-run-rtt-cloud" style="font-family: var(--font-mono);">0.0 ms</td>
+                                        <td id="live-run-energy-cloud" style="font-family: var(--font-mono);">0.00 mJ</td>
+                                        <td><span class="status-badge busy" style="font-size:0.6rem;">High WAN RTT</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Real-Time Chart Area -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; min-height: 250px;">
+                        <!-- Workload Division Chart -->
+                        <section class="glass-card">
+                            <h3 style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-secondary);">📈 Real-Time Allocation Distribution</h3>
+                            <div style="flex: 1; position: relative;">
+                                <canvas id="chart-offload-allocation"></canvas>
+                            </div>
+                        </section>
+                        
+                        <!-- Tuning Engine Insights -->
+                        <section class="glass-card">
+                            <h3 style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-secondary);">🧠 Historical Tuning Bias</h3>
+                            <div id="tuning-insights" style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.5; overflow-y: auto;">
+                                <p style="font-style: italic; color: var(--text-muted); text-align: center; margin-top: 2rem;">No historical records found for this configuration. Executing runs will populate training profiles.</p>
+                            </div>
+                        </section>
+                    </div>
+
+                    <!-- History Log Table -->
+                    <section class="glass-card" style="max-height: 200px; flex-shrink: 0;">
+                        <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-secondary);">📋 Historical Strategy Archive</h3>
+                        <div class="log-table-wrapper" style="overflow-y: auto; max-height: 130px;">
+                            <table class="log-table">
+                                <thead>
+                                    <tr>
+                                        <th>Run ID</th>
+                                        <th>Mode</th>
+                                        <th>Workload</th>
+                                        <th>Limit (s)</th>
+                                        <th>Actual (s)</th>
+                                        <th>Energy (J)</th>
+                                        <th>Allocations (Dev/Edge/Cloud)</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-log-body">
+                                    <tr><td colspan="8" class="empty-row" style="text-align: center; font-style: italic; color: var(--text-muted); padding: 1rem 0;">No offloading history logged</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                </main>
+            </div>
+
+            <!-- Footer -->
+            <footer class="app-footer" style="margin-top: 1.5rem; border-top: 1px solid var(--border-glass); padding-top: 0.75rem;">
+                <p>MDECO Scheduler Framework v1.0.0 &middot; Optimized for Multi-Node Offload Benching</p>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Chart.js CDN (loaded locally or from web) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/mdeco.js') }}"></script>
+    <script>
+        // Synchronize radio button card styling
+        const radioOptions = document.querySelectorAll('.radio-option');
+        radioOptions.forEach(opt => {
+            opt.addEventListener('click', () => {
+                radioOptions.forEach(r => r.classList.remove('active'));
+                opt.classList.add('active');
+                opt.querySelector('input[type="radio"]').checked = true;
+                // Dispatch event so scheduler script detects the change immediately
+                const event = new Event('change');
+                opt.querySelector('input[type="radio"]').dispatchEvent(event);
+            });
+        });
+    </script>
+</body>
+</html>

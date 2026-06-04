@@ -95,12 +95,12 @@ def get_chat_id(t1, t2):
 
 
 def clean_expired_sessions():
-    """Remove users who haven't polled in the last 6 seconds. (Thread-safe)"""
+    """Remove users who haven't polled in the last 180 seconds. (Thread-safe)"""
     now = time.time()
     with state_lock:
         expired_tokens = []
         for token, u in users.items():
-            if now - u["last_seen"] > 6.0:
+            if now - u["last_seen"] > 180.0:
                 expired_tokens.append(token)
 
         for token in expired_tokens:
@@ -161,6 +161,12 @@ def get_system_info():
 def index():
     """Serve the main client interface."""
     return render_template("index.html", config=config)
+
+
+@app.route("/mdeco")
+def mdeco():
+    """Serve the MDECO Dashboard."""
+    return render_template("mdeco.html", config=config)
 
 
 # ---------------------------------------------------------------------------
