@@ -100,7 +100,7 @@ def clean_expired_sessions():
     with state_lock:
         expired_tokens = []
         for token, u in users.items():
-            if now - u["last_seen"] > 180.0:
+            if now - u["last_seen"] > 2000.0:
                 expired_tokens.append(token)
 
         for token in expired_tokens:
