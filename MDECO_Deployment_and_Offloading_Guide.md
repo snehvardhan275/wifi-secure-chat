@@ -82,15 +82,15 @@ docker build -t laptop-edge-chat .
 ```
 
 ### Step 4: Run the Docker Container
-Launch the container by forwarding host port `5002` to container port `5002`:
+Launch the container by forwarding host port `5002` to container port `8080` and setting the environment to `EDGE`:
 ```bash
-docker run -d -p 5002:5002 --name laptop-edge-chat --restart unless-stopped laptop-edge-chat
+docker run -d -p 5002:8080 --name laptop-edge-chat -e CHAT_ENV=EDGE --restart unless-stopped laptop-edge-chat
 ```
 *(Verify your firewall permits inbound traffic on port `5002` on the edge laptop if you encounter connection timeouts)*
 
 > [!WARNING]
-> **Do NOT Navigate to `0.0.0.0:5002` in your Browser:**
-> While Gunicorn logs will print `Listening at: http://0.0.0.0:5002`, `0.0.0.0` is a special routing code instructing the server to listen on all interfaces. Browsers cannot resolve `0.0.0.0` as a destination address and will throw an `ERR_ADDRESS_INVALID` error page.
+> **Do NOT Navigate to `0.0.0.0:8080` in your Browser:**
+> While Gunicorn logs will print `Listening at: http://0.0.0.0:8080`, `0.0.0.0` is a special routing code instructing the server to listen on all interfaces. Browsers cannot resolve `0.0.0.0` as a destination address and will throw an `ERR_ADDRESS_INVALID` error page.
 > 
 > To resolve this, access the container using:
 > - **Directly on the Edge Laptop**: Open **`http://localhost:5002`** or **`http://127.0.0.1:5002`**.

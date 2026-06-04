@@ -11,7 +11,7 @@ import psutil
 def detect_environment():
     """Auto-detect the deployment environment."""
     env = os.environ.get("CHAT_ENV", "").upper()
-    if env in ("LOCAL", "CLOUD"):
+    if env in ("LOCAL", "EDGE", "CLOUD"):
         return env
 
     if os.path.exists("/.dockerenv") or os.environ.get("DOCKER_CONTAINER"):
@@ -39,6 +39,16 @@ class LocalConfig(BaseConfig):
     CORS_ORIGINS = "*"
 
 
+class EdgeConfig(BaseConfig):
+    """LAN Laptop Edge Server configuration."""
+    ENV_NAME = "EDGE"
+    ENV_LABEL = "⚡ Edge (LAN Laptop)"
+    DEBUG = False
+    HOST = "0.0.0.0"
+    PORT = int(os.environ.get("PORT", 5002))
+    CORS_ORIGINS = "*"
+
+
 class CloudConfig(BaseConfig):
     """AWS / GCP / Render Docker container configuration."""
     ENV_NAME = "CLOUD"
@@ -51,6 +61,7 @@ class CloudConfig(BaseConfig):
 
 CONFIG_MAP = {
     "LOCAL": LocalConfig,
+    "EDGE": EdgeConfig,
     "CLOUD": CloudConfig,
 }
 

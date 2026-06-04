@@ -187,11 +187,18 @@ def api_login():
     if password != config.PASSWORD_HASH:
         return jsonify({"status": "error", "message": "Incorrect password."}), 401
 
-    # Check if username is already taken by an active user
     with state_lock:
-        for u in users.values():
+        # Check if username is already taken by an active user
+        for existing_token, u in users.items():
             if u["name"].lower() == name.lower():
-                return jsonify({"status": "error", "message": "Username is already online."}), 400
+                # Allow re-login and return the existing session token
+                u["last_seen"] = time.time()
+                print(f"[Login] Reconnected active user: {name} (Token: {existing_token[:8]}...)")
+                return jsonify({
+                    "status": "success",
+                    "session_token": existing_token,
+                    "name": name
+                })
 
         # Create session
         token = uuid.uuid4().hex
